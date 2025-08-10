@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Lightsaber Builder (Mobile Friendly)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<style>
+  html,body { margin:0; padding:0; height:100%; background:#000; }
+  canvas { display:block; }
+  .ui-note {
+    position:absolute; left:10px; bottom:10px;
+    background: rgba(0,0,0,0.5);
+    color:white; padding:6px 10px; border-radius:8px;
+    font-size:14px;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div class="ui-note">Drag to rotate | Pinch to zoom | Tap controls top-right</div>
+
+<!-- Three.js Core -->
+<script src="https://unpkg.com/three@0.154.0/build/three.min.js"></script>
+<!-- OrbitControls -->
+<script src="https://unpkg.com/three@0.154.0/examples/js/controls/OrbitControls.js"></script>
+<!-- lil-gui -->
+<script src="https://cdn.jsdelivr.net/npm/lil-gui@0.18/dist/lil-gui.min.js"></script>
+<!-- Postprocessing -->
+<script src="https://unpkg.com/three@0.154.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://unpkg.com/three@0.154.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://unpkg.com/three@0.154.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+<script>
+  // Renderer & Scene
+  const canvas = document.getElementById('canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x000000, 0.0025);
+
+  const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 2000);
+  camera.position.set(1.6, 0.8, 3.2);
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.target.set(0, 0.6, 0);
+
+  // Lights
+  scene.add(new THREE.HemisphereLight(0x808080, 0x101020, 0.9));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+  dir.position.set(5, 10, 7);
+  scene.add(dir);
+
+  // Postprocessing
+  const composer = new THREE.EffectComposer(renderer);
+  composer.addPass(new THREE.RenderPass(scene, camera));
+  const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.4, 0.6, 0.2);
+  composer.addPass(bloomPass);
+
+  const root = new THREE.Group();
+  scene.add(root);
+
+  // Helpers
+  const metalMat = () => new THREE.MeshStandardMaterial({ color:0x909090, metalness:0.9, roughness:0.25 });
+  const darkMat = () => new THREE.MeshStandardMaterial({ color:0x222222, metalness:0.2, roughness:0.6 });
+
+  function createEmitter(type=0, mat=metalMat()) {
+    const g = new THREE.Group();
+    if (type === 0) {
+      const cone = new THREE.CylinderGeometry(0.08, 0.14, 0.28, 32);
+      const mesh = new THREE.Mesh(cone, mat);
+      mesh.position.y = 1.44; g.add(mesh);
+      const rim = new THREE.TorusGeometry(0.145, 0.02, 12, 40);
+      const rimM = new THREE.Mesh(rim, mat);
+      rimM.rotation.x = Math.PI/2; rimM.position.y = 1.58; g.add(rimM);
+    } else if (type === 1) {
+      const body = new THREE.CylinderGeometry(0.12, 0.12, 0.24, 12);
+      const m = new THREE.Mesh(body, mat);
+      m.position.y = 1.44; g.add(m);
+      const grill = new THREE.BoxGeometry(0.14, 0.02, 0.14);
+      const grillM = new THREE.Mesh(grill, darkMat());
+      grillM.position.y = 1.54; g.add(grillM);
+    } else {
+      const ring = new THREE.ConeGeometry(0.28, 0.18, 32, 1, true);
+      const r = new THREE.Mesh(ring, mat);
+      r.position.y = 1.5; r.rotation.x = Math.PI; g.add(r);
+      const inner = new THREE.CylinderGeometry(0.06, 0.06, 0.12, 32);
+      const im = new THREE.Mesh(inner, mat);
+      im.position.y = 1.36; g.add(im);
+    }
+    return g;
+  }
+
+  function createGrip(type=0, mat=metalMat()) {
+    const g = new THREE.Group();
+    if (type === 0) {
+      const cyl = new THREE.CylinderGeometry(0.12, 0.12, 0.9, 24);
+      const mesh = new THREE.Mesh(cyl, mat);
+      mesh.position.y = 0.85; g.add(mesh);
+      for (let i=0;i<6;i++) {
+        const ring = new THREE.TorusGeometry(0.125, 0.012, 8, 40);
+        const rm = new THREE.Mesh(ring, darkMat());
+        rm.rotation.x = Math.PI/2;
+        rm.position.y = 0.4 + i*0.1; g.add(rm);
+      }
+    } else if (type === 1) {
+      const segs = new THREE.CylinderGeometry(0.125,0.125,0.9,24,6);
+      const seam = new THREE.Mesh(segs, mat);
+      seam.position.y = 0.85; g.add(seam);
+      for (let i=0;i<4;i++) {
+        const band = new THREE.CylinderGeometry(0.13,0.13,0.04,24);
+        const bm = new THREE.Mesh(band, darkMat());
+        bm.position.y = 0.3 + i*0.22; g.add(bm);
+      }
+    } else {
+      const slim = new THREE.CylinderGeometry(0.095,0.095,0.9,18);
+      const sm = new THREE.Mesh(slim, mat);
+      sm.position.y = 0.85; g.add(sm);
+      const cluster = new THREE.Group();
+      for (let i=0;i<3;i++) {
+        const btn = new THREE.CylinderGeometry(0.02,0.02,0.01,12);
+        const bm = new THREE.Mesh(btn, new THREE.MeshStandardMaterial({color:0xff3300}));
+        bm.position.set(0.07, 0.9 - i*0.08, 0);
+        cluster.add(bm);
+      }
+      g.add(cluster);
+    }
+    return g;
+  }
+
+  function createPommel(type=0, mat=metalMat()) {
+    const g = new THREE.Group();
+    if (type === 0) {
+      const disc = new THREE.CylinderGeometry(0.12,0.12,0.06,32);
+      const m = new THREE.Mesh(disc, mat);
+      m.position.y = 0.3; g.add(m);
+    } else if (type === 1) {
+      const ring = new THREE.TorusGeometry(0.12,0.03,12,60);
+      const rm = new THREE.Mesh(ring, mat);
+      rm.rotation.x = Math.PI/2;
+      rm.position.y = 0.28; g.add(rm);
+    } else {
+      const spike = new THREE.ConeGeometry(0.04,0.12,16);
+      const sp = new THREE.Mesh(spike, mat);
+      sp.position.y = 0.28; g.add(sp);
+    }
+    return g;
+  }
+
+  function createBlade(length=1.6, color=0x66ccff) {
+    const bladeGroup = new THREE.Group();
+    const coreGeo = new THREE.CylinderGeometry(0.02,0.02,length,12);
+    const coreMat = new THREE.MeshStandardMaterial({
+      color, emissive: color, emissiveIntensity: 1.6,
+      transparent:true, opacity:0.9
+    });
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    core.position.y = 1.44 + length/2;
+    bladeGroup.add(core);
+
+    const glow = new THREE.CylinderGeometry(0.045,0.045,length,8);
+    const glowMat = new THREE.MeshBasicMaterial({
+      color, transparent:true, opacity:0.16,
+      blending:THREE.AdditiveBlending, depthWrite:false
+    });
+    const outer = new THREE.Mesh(glow, glowMat);
+    outer.position.copy(core.position);
+    bladeGroup.add(outer);
+
+    bladeGroup.userData.core = core;
+    bladeGroup.userData.glow = outer;
+    return bladeGroup;
+  }
+
+  // State
+  const state = {
+    emitterIndex: 0,
+    gripIndex: 0,
+    pommelIndex: 0,
+    hiltColor: '#909090',
+    accentColor: '#222222',
+    metalness: 0.9,
+    roughness: 0.25,
+    bladeOn: true,
+    bladeColor: '#66ccff',
+    bladeLength: 1.6,
+    bloomStrength: 1.4
+  };
+
+  let emitterObj, gripObj, pommelObj, bladeObj;
+
+  function rebuildHilt() {
+    [emitterObj, gripObj, pommelObj, bladeObj].forEach(o => { if(o) root.remove(o); });
+    const metal = new THREE.MeshStandardMaterial({ color:new THREE.Color(state.hiltColor), metalness: state.metalness, roughness: state.roughness });
+    emitterObj = createEmitter(state.emitterIndex, metal);
+    gripObj = createGrip(state.gripIndex, metal);
+    pommelObj = createPommel(state.pommelIndex, metal);
+    emitterObj.position.y = 1.15;
+    gripObj.position.y = 0.55;
+    pommelObj.position.y = 0.12;
+    root.add(emitterObj, gripObj, pommelObj);
+    if (state.bladeOn) {
+      bladeObj = createBlade(state.bladeLength, new THREE.Color(state.bladeColor));
+      root.add(bladeObj);
+    }
+  }
+  rebuildHilt();
+
+  // GUI
+  const gui = new lil.GUI({ width: 260 });
+  gui.add(state, 'emitterIndex', { 'Flared Cone':0, 'Squared Grill':1, 'Ring Flare':2 }).name('Emitter').onChange(rebuildHilt);
+  gui.add(state, 'gripIndex', { 'Leather Wrap':0, 'Segmented':1, 'Slim Cluster':2 }).name('Grip').onChange(rebuildHilt);
+  gui.add(state, 'pommelIndex', { 'Flat Disc':0, 'Ring Pommel':1, 'Spike':2 }).name('Pommel').onChange(rebuildHilt);
+  gui.addColor(state, 'hiltColor').name('Hilt Color').onChange(rebuildHilt);
+  gui.add(state, 'metalness', 0,1,0.01).onChange(rebuildHilt);
+  gui.add(state, 'roughness', 0,1,0.01).onChange(rebuildHilt);
+  gui.add(state, 'bladeOn').name('Blade On').onChange(rebuildHilt);
+  gui.addColor(state, 'bladeColor').name('Blade Color').onChange(() => {
+    if (bladeObj) {
+      bladeObj.userData.core.material.color.set(state.bladeColor);
+      bladeObj.userData.core.material.emissive.set(state.bladeColor);
+      bladeObj.userData.glow.material.color.set(state.bladeColor);
+    }
+  });
+  gui.add(state, 'bladeLength', 0.6, 2.4, 0.01).name('Blade Length').onChange(rebuildHilt);
+  gui.add(state, 'bloomStrength', 0,3,0.01).name('Glow').onChange(v => { bloomPass.strength = v; });
+
+  // Animate
+  function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    composer.render();
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
+</body>
+</html>
