@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>3D Custom Lightsaber Builder</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html,body { height:100%; margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;}
+    #app { width:100vw; height:100vh; overflow:hidden; display:flex; }
+    #canvas { flex:1; display:block; }
+    .ui-note {
+      position: absolute; left: 12px; bottom: 12px;
+      background: rgba(0,0,0,0.5); color: #fff; padding:8px 12px; border-radius:8px;
+      font-size:13px; pointer-events:none;
+    }
+    header {
+      position:absolute; right:12px; top:12px; z-index:10; color:#fff;
+      background: rgba(0,0,0,0.45); padding:10px 14px; border-radius:10px;
+      font-size:14px;
+    }
+    a.link { color: #86f; text-decoration:none; }
+    .gui {
+      position:absolute; right:12px; top:72px; z-index:20;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="canvas"></canvas>
+    <header>
+      Lightsaber Builder — rotate: drag | zoom: scroll | pan: right-drag<br/>
+      Made for you — edit, extend, enjoy.
+    </header>
+    <div class="ui-note">Tip: try different emitter shapes + adjust blade length & color.</div>
+  </div>
+
+  <!-- Three.js & examples as ES modules -->
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.154.0/build/three.module.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.154.0/examples/jsm/controls/OrbitControls.js';
+    import { GUI } from 'https://unpkg.com/lil-gui@0.18.0/dist/lil-gui.esm.min.js';
+    import { EffectComposer } from 'https://unpkg.com/three@0.154.0/examples/jsm/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'https://unpkg.com/three@0.154.0/examples/jsm/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'https://unpkg.com/three@0.154.0/examples/jsm/postprocessing/UnrealBloomPass.js';
+
+    // ---------- Basic renderer, scene, camera ----------
+    const canvas = document.getElementById('canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x000000, 0.0025);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
+    camera.position.set(1.6, 0.8, 3.2);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0, 0.6, 0);
+
+    // ---------- Lighting ----------
+    const hemi = new THREE.HemisphereLight(0x808080, 0x101020, 0.9);
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir.position.set(5, 10, 7);
+    scene.add(dir);
+
+    // ---------- Post-processing (bloom) ----------
+    const renderScene = new RenderPass(scene, camera);
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.6, 0.6, 0.2);
+    bloomPass.threshold = 0;
+    bloomPass.strength = 1.4;
+    bloomPass.radius = 0.6;
+
+    const composer = new EffectComposer(renderer);
+    composer.addPass(renderScene);
+    composer.addPass(bloomPass);
+
+    // ---------- Saber root group ----------
+    const root = new THREE.Group();
+    scene.add(root);
+
+    // helper grid / stand
+    const grid = new THREE.GridHelper(10, 40, 0x111111, 0x111111);
+    grid.material.opacity = 0.12;
+    grid.material.transparent = true;
+    scene.add(grid);
+
+    // ---------- Materials that will be reused ----------
+    const metalMat = () => new THREE.MeshStandardMaterial({ color: 0x909090, metalness: 0.9, roughness: 0.25 });
+    const darkMat = () => new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.2, roughness: 0.6 });
+
+    // ---------- Hilt component creation functions ----------
+    function createEmitter(type = 0, material = metalMat()) {
+      const g = new THREE.Group();
+      if (type === 0) {
+        // classic cone / flared
+        const cone = new THREE.CylinderGeometry(0.08, 0.14, 0.28, 32);
+        const mesh = new THREE.Mesh(cone, material);
+        mesh.position.y = 1.44;
+        g.add(mesh);
+        const rim = new THREE.TorusGeometry(0.145, 0.02, 12, 40);
+        const rimM = new THREE.Mesh(rim, material);
+        rimM.rotation.x = Math.PI / 2;
+        rimM.position.y = 1.58;
+        g.add(rimM);
+      } else if (type === 1) {
+        // squared emitter with grill
+        const body = new THREE.CylinderGeometry(0.12, 0.12, 0.24, 12);
+        const m = new THREE.Mesh(body, material);
+        m.position.y = 1.44;
+        g.add(m);
+        const grill = new THREE.BoxGeometry(0.14, 0.02, 0.14);
+        const grillM = new THREE.Mesh(grill, darkMat());
+        grillM.position.y = 1.54;
+        g.add(grillM);
+      } else {
+        // deep flared ring
+        const ring = new THREE.ConeGeometry(0.28, 0.18, 32, 1, true);
+        const r = new THREE.Mesh(ring, material);
+        r.position.y = 1.5;
+        r.rotation.x = Math.PI;
+        g.add(r);
+        const inner = new THREE.CylinderGeometry(0.06, 0.06, 0.12, 32);
+        const im = new THREE.Mesh(inner, material);
+        im.position.y = 1.36;
+        g.add(im);
+      }
+      return g;
+    }
+
+    function createGrip(type = 0, material = metalMat()) {
+      const g = new THREE.Group();
+      if (type === 0) {
+        const cyl = new THREE.CylinderGeometry(0.12, 0.12, 0.9, 24);
+        const mesh = new THREE.Mesh(cyl, material);
+        mesh.position.y = 0.85;
+        g.add(mesh);
+        // leather wrap (thin bands)
+        for (let i = 0; i < 6; i++) {
+          const ring = new THREE.TorusGeometry(0.125, 0.012, 8, 40);
+          const rm = new THREE.Mesh(ring, darkMat());
+          rm.rotation.x = Math.PI / 2;
+          rm.position.y = 0.4 + i * 0.1;
+          g.add(rm);
+        }
+      } else if (type === 1) {
+        const segments = new THREE.CylinderGeometry(0.125, 0.125, 0.9, 24, 6);
+        const seam = new THREE.Mesh(segments, material);
+        seam.position.y = 0.85;
+        g.add(seam);
+        // wider rubbery bands
+        for (let i = 0; i < 4; i++) {
+          const band = new THREE.CylinderGeometry(0.13, 0.13, 0.04, 24);
+          const bm = new THREE.Mesh(band, darkMat());
+          bm.position.y = 0.3 + i * 0.22;
+          g.add(bm);
+        }
+      } else {
+        // slim grip with button cluster
+        const slim = new THREE.CylinderGeometry(0.095, 0.095, 0.9, 18);
+        const sm = new THREE.Mesh(slim, material);
+        sm.position.y = 0.85;
+        g.add(sm);
+        const cluster = new THREE.Group();
+        for (let i=0;i<3;i++){
+          const btn = new THREE.CylinderGeometry(0.02,0.02,0.01,12);
+          const bm = new THREE.Mesh(btn, new THREE.MeshStandardMaterial({color:0xff3300, metalness:0.2, roughness:0.2}));
+          bm.position.set(0.07, 0.9 - i*0.08, 0);
+          cluster.add(bm);
+        }
+        g.add(cluster);
+      }
+      return g;
+    }
+
+    function createPommel(type = 0, material = metalMat()) {
+      const g = new THREE.Group();
+      if (type === 0) {
+        const disc = new THREE.CylinderGeometry(0.12, 0.12, 0.06, 32);
+        const m = new THREE.Mesh(disc, material);
+        m.position.y = 0.3;
+        g.add(m);
+      } else if (type === 1) {
+        const ring = new THREE.TorusGeometry(0.12, 0.03, 12, 60);
+        const rm = new THREE.Mesh(ring, material);
+        rm.rotation.x = Math.PI / 2;
+        rm.position.y = 0.28;
+        g.add(rm);
+      } else {
+        const spike = new THREE.ConeGeometry(0.04, 0.12, 16);
+        const sp = new THREE.Mesh(spike, material);
+        sp.position.y = 0.28;
+        g.add(sp);
+      }
+      return g;
+    }
+
+    // ---------- Blade creation ----------
+    function createBlade(length = 1.6, color = 0x66ccff) {
+      const bladeGroup = new THREE.Group();
+      const coreGeo = new THREE.CylinderGeometry(0.02, 0.02, length, 12);
+      const coreMat = new THREE.MeshStandardMaterial({
+        color: color,
+        emissive: color,
+        emissiveIntensity: 1.6,
+        metalness: 0,
+        roughness: 0.1,
+        transparent: true,
+        opacity: 0.9
+      });
+      const core = new THREE.Mesh(coreGeo, coreMat);
+      core.position.y = 1.44 + length / 2;
+      bladeGroup.add(core);
+
+      // outer soft glow (a thin transparent cone scaled)
+      const glow = new THREE.CylinderGeometry(0.045, 0.045, length, 8);
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.16,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const outer = new THREE.Mesh(glow, glowMat);
+      outer.position.copy(core.position);
+      bladeGroup.add(outer);
+
+      bladeGroup.userData.core = core;
+      bladeGroup.userData.glow = outer;
+      return bladeGroup;
+    }
+
+    // ---------- State and current components ----------
+    const state = {
+      emitterIndex: 0,
+      gripIndex: 0,
+      pommelIndex: 0,
+      hiltColor: '#909090',
+      accentColor: '#222222',
+      metalness: 0.9,
+      roughness: 0.25,
+      bladeOn: true,
+      bladeColor: '#66ccff',
+      bladeLength: 1.6,
+      bloomStrength: 1.4
+    };
+
+    let emitterObj = null;
+    let gripObj = null;
+    let pommelObj = null;
+    let bladeObj = null;
+
+    function rebuildHilt() {
+      // clear previous
+      if (emitterObj) root.remove(emitterObj);
+      if (gripObj) root.remove(gripObj);
+      if (pommelObj) root.remove(pommelObj);
+      if (bladeObj) root.remove(bladeObj);
+
+      const metal = new THREE.MeshStandardMaterial({ color: new THREE.Color(state.hiltColor), metalness: state.metalness, roughness: state.roughness });
+      const accent = new THREE.MeshStandardMaterial({ color: new THREE.Color(state.accentColor), metalness: 0.2, roughness: 0.6 });
+
+      emitterObj = createEmitter(state.emitterIndex, metal);
+      gripObj = createGrip(state.gripIndex, metal);
+      pommelObj = createPommel(state.pommelIndex, metal);
+
+      // central offset: position everything relative to handle base at y = 0.3 -> emitter top around 1.44
+      emitterObj.position.y = 0;
+      gripObj.position.y = 0;
+      pommelObj.position.y = 0;
+
+      // adjust overall positions so they stack
+      emitterObj.position.y = 1.15; // emitter near top
+      gripObj.position.y = 0.55;    // grip occupies middle
+      pommelObj.position.y = 0.12;  // pommel at bottom
+
+      root.add(emitterObj);
+      root.add(gripObj);
+      root.add(pommelObj);
+
+      // blade
+      if (state.bladeOn) {
+        bladeObj = createBlade(state.bladeLength, new THREE.Color(state.bladeColor));
+        root.add(bladeObj);
+      }
+    }
+
+    // initial build
+    rebuildHilt();
+
+    // ---------- GUI ----------
+    const gui = new GUI({ title: 'Lightsaber Controls' });
+    gui.domElement.style.zIndex = 30;
+    const hiltFolder = gui.addFolder('Hilt Components');
+    hiltFolder.add(state, 'emitterIndex', { 'Flared Cone':0, 'Squared Grill':1, 'Ring Flare':2 }).name('Emitter').onChange(rebuildHilt);
+    hiltFolder.add(state, 'gripIndex', { 'Leather Wrap':0, 'Segmented':1, 'Slim Cluster':2 }).name('Grip').onChange(rebuildHilt);
+    hiltFolder.add(state, 'pommelIndex', { 'Flat Disc':0, 'Ring Pommel':1, 'Spike':2 }).name('Pommel').onChange(rebuildHilt);
+    hiltFolder.open();
+
+    const matFolder = gui.addFolder('Materials');
+    matFolder.addColor(state, 'hiltColor').name('Hilt Color').onChange(rebuildHilt);
+    matFolder.addColor(state, 'accentColor').name('Accent Color').onChange(rebuildHilt);
+    matFolder.add(state, 'metalness', 0, 1, 0.01).onChange(rebuildHilt);
+    matFolder.add(state, 'roughness', 0, 1, 0.01).onChange(rebuildHilt);
+    matFolder.open();
+
+    const bladeFolder = gui.addFolder('Blade');
+    bladeFolder.add(state, 'bladeOn').name('Blade On').onChange(rebuildHilt);
+    bladeFolder.addColor(state, 'bladeColor').name('Blade Color').onChange(() => {
+      if (bladeObj) {
+        bladeObj.userData.core.material.color.set(state.bladeColor);
+        bladeObj.userData.core.material.emissive.set(state.bladeColor);
+        bladeObj.userData.glow.material.color.set(state.bladeColor);
+      }
+    });
+    bladeFolder.add(state, 'bladeLength', 0.6, 2.4, 0.01).name('Blade Length').onChange(() => {
+      if (state.bladeOn) {
+        rebuildHilt();
+      }
+    });
+    bladeFolder.add(state, 'bloomStrength', 0, 3, 0.01).name('Bloom Strength').onChange(v => {
+      bloomPass.strength = v;
+    });
+    bladeFolder.open();
+
+    gui.open();
+
+    // ---------- Animation loop ----------
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+
+      // subtle rotation or breathing
+      if (bladeObj) bladeObj.rotation.y += 0.0015;
+
+      // render with composer
+      composer.render();
+    }
+
+    animate();
+
+    // ---------- Resize ----------
+    window.addEventListener('resize', () => {
+      const w = window.innerWidth, h = window.innerHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      composer.setSize(w, h);
+    });
+
+    // ---------- Simple keyboard shortcuts ----------
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'b') {
+        state.bladeOn = !state.bladeOn;
+        rebuildHilt();
+      } else if (e.key === 'r') {
+        // randomize
+        state.emitterIndex = Math.floor(Math.random()*3);
+        state.gripIndex = Math.floor(Math.random()*3);
+        state.pommelIndex = Math.floor(Math.random()*3);
+        state.hiltColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6,'0');
+        state.accentColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6,'0');
+        state.bladeColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6,'0');
+        rebuildHilt();
+        // sync GUI readouts (lil-gui automatically updates objects' display, but refresh explicitly)
+        for (const controller of gui.__controllers) controller.updateDisplay?.();
+        for (const f of Object.values(gui.__folders || {})) {
+          for (const c of f.controllers) c.updateDisplay?.();
+        }
+      }
+    });
+
+    // ---------- Exports / small helpers ----------
+    // Screenshot export (press 'p' to download a PNG)
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'p') {
+        // render once to canvas via composer, then download
+        composer.render();
+        const dataURL = renderer.domElement.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = dataURL;
+        a.download = 'lightsaber.png';
+        a.click();
+      }
+    });
+
+    // ---------- Accessibility / initial camera framing ----------
+    // Frame the root group nicely
+    const box = new THREE.Box3().setFromObject(root);
+    const size = box.getSize(new THREE.Vector3()).length();
+    const center = box.getCenter(new THREE.Vector3());
+    controls.maxDistance = size * 10;
+    camera.near = Math.max(0.1, size / 100);
+    camera.far = size * 100;
+    camera.updateProjectionMatrix();
+    controls.target.copy(center);
+
+    // ensure a small initial rebuild to apply chosen state
+    rebuildHilt();
+
+  </script>
+</body>
+</html>
